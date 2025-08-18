@@ -1,0 +1,20 @@
+{
+"name": "@ezburn/openharmony-arm64",
+  "version": "0.1.1",
+  "description": "A WebAssembly shim for ezburn on OpenHarmony ARM64.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ezburn/ezburn.git"
+  },
+  "license": "MIT",
+  "preferUnplugged": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "openharmony"
+  ],
+  "cpu": [
+    "arm64"
+  ]
+}
