@@ -22,6 +22,7 @@
     "@ezburn/android-arm": "0.1.0",
     "@ezburn/android-arm64": "0.1.0",
     "@ezburn/android-x64": "0.1.0",
+    "@ezburn/openharmony-arm64": "0.1.1",
     "@ezburn/darwin-arm64": "0.1.0",
     "@ezburn/darwin-x64": "0.1.0",
     "@ezburn/freebsd-arm64": "0.1.0",
