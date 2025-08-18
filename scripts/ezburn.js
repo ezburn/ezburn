@@ -213,6 +213,7 @@ exports.buildWasmLib = async (ezburnPath) => {
   for (const dir of [
     path.join(repoDir, 'npm', '@ezburn', 'android-arm'),
     path.join(repoDir, 'npm', '@ezburn', 'android-x64'),
+    path.join(repoDir, 'npm', '@ezburn', 'openharmony-arm64'),
   ]) {
     fs.mkdirSync(path.join(dir, 'bin'), { recursive: true })
     fs.writeFileSync(path.join(dir, 'wasm_exec.js'), wasm_exec_js)
