@@ -71,7 +71,7 @@ function test(name, backends, fn) {
   }
 }
 
-globalThis.addEventListener("unload", (e) => {
+window.addEventListener("unload", (e) => {
   try {
     Deno.removeSync(rootTestDir, { recursive: true })
   } catch {
@@ -117,7 +117,7 @@ test("basicContext", ['native'], async ({ ezburn, testDir }) => {
   asserts.assertStrictEquals(result.default, true)
 })
 
-test("basicPlugin", ['native'], async ({ ezburn }) => {
+test("basicPlugin", ['native', 'wasm-main', 'wasm-worker'], async ({ ezburn }) => {
   const build = await ezburn.build({
     entryPoints: ['<entry>'],
     bundle: true,
@@ -136,7 +136,7 @@ test("basicPlugin", ['native'], async ({ ezburn }) => {
   asserts.assertStrictEquals(result.default, true)
 })
 
-test("basicTransform", ['native'], async ({ ezburn }) => {
+test("basicTransform", ['native', 'wasm-main', 'wasm-worker'], async ({ ezburn }) => {
   const ts = 'let x: number = 1+2'
   const result = await ezburn.transform(ts, { loader: 'ts' })
   asserts.assertStrictEquals(result.code, 'let x = 1 + 2;\n')
@@ -161,7 +161,7 @@ test("largeTransform", ['native'], async ({ ezburn }) => {
   asserts.assertStrictEquals(result.outputFiles[0].text, y.slice(0, -2) + '];\n')
 })
 
-test("analyzeMetafile", ['native'], async ({ ezburn }) => {
+test("analyzeMetafile", ['native', 'wasm-main', 'wasm-worker'], async ({ ezburn }) => {
   const result = await ezburn.analyzeMetafile({
     outputs: {
       'out.js': {
