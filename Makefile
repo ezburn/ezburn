@@ -1,4 +1,4 @@
-EZBURN_VERSION = $(shell cat version.txt)
+EZBUILD_VERSION = $(shell cat version.txt)
 
 # Strip debug info
 GO_FLAGS += "-ldflags=-s -w"
@@ -20,7 +20,7 @@ test-all:
 	@$(MAKE) --no-print-directory -j6 test-common test-deno ts-type-tests test-wasm-node test-wasm-browser lib-typecheck test-yarnpnp
 
 check-go-version:
-	@go version | grep ' go1\.24\.2 ' || (echo 'Please install Go version 1.24.2' && false)
+	@go version | grep ' go1\.23\.8 ' || (echo 'Please install Go version 1.23.8' && false)
 
 # Note: Don't add "-race" here by default. The Go race detector is currently
 # only supported on the following configurations:
@@ -36,11 +36,11 @@ check-go-version:
 #
 # Also, it isn't necessarily supported on older OS versions even if the OS/CPU
 # combination is supported, such as on macOS 10.9. If you want to test using
-# the race detector, you can manually add it using the EZBURN_RACE environment
-# variable like this: "EZBURN_RACE=-race make test". Or you can permanently
-# enable it by adding "export EZBURN_RACE=-race" to your shell profile.
+# the race detector, you can manually add it using the EZBUILD_RACE environment
+# variable like this: "EZBUILD_RACE=-race make test". Or you can permanently
+# enable it by adding "export EZBUILD_RACE=-race" to your shell profile.
 test-go:
-	go test $(EZBURN_RACE) ./internal/... ./pkg/...
+	go test $(EZBUILD_RACE) ./internal/... ./pkg/...
 
 vet-go:
 	go vet ./cmd/... ./internal/... ./pkg/...
@@ -58,18 +58,21 @@ no-filepath:
 # 1.17.2, which will crash when run in an environment with over 4096
 # bytes of environment variable data such as GitHub Actions.
 test-wasm-node: ezburn
+	env -i $(shell go env) PATH="$(shell go env GOROOT)/misc/wasm:$(PATH)" GOOS=js GOARCH=wasm go test ./internal/...
 	node scripts/wasm-tests.js
+
 test-wasm-browser: platform-wasm | scripts/browser/node_modules
 	cd scripts/browser && node browser-tests.js
 
 test-deno: ezburn platform-deno
-	EZBURN_BINARY_PATH="$(shell pwd)/ezburn" deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
+	EZBUILD_BINARY_PATH="$(shell pwd)/ezburn" deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
 	@echo '✅ deno tests passed' # I couldn't find a Deno API for telling when tests have failed, so I'm doing this here instead
 	deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
 	deno run -A './deno/mod.js' # See: https://github.com/khulnasoft/ezburn/pull/3917
 
 test-deno-windows: ezburn platform-deno
-	EZBURN_BINARY_PATH=./ezburn.exe deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
+	EZBUILD_BINARY_PATH=./ezburn.exe deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
 
 register-test: version-go | scripts/node_modules
 	node scripts/ezburn.js npm/ezburn/package.json --version
@@ -177,28 +180,57 @@ test-e2e-pnpm:
 	cd e2e-pnpm && pnpm rebuild && pnpm rebuild
 	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
 
+	# Test install without scripts
+	rm -fr e2e-pnpm && mkdir e2e-pnpm && cd e2e-pnpm && echo {} > package.json && pnpm i --ignore-scripts ezburn
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+	# Test CI reinstall
+	cd e2e-pnpm && pnpm i --frozen-lockfile
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+	# Test rebuild
+	cd e2e-pnpm && pnpm rebuild && pnpm rebuild
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+
+	# Test install without optional dependencies
+	rm -fr e2e-pnpm && mkdir e2e-pnpm && cd e2e-pnpm && echo {} > package.json && pnpm i --no-optional ezburn
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+	# Test CI reinstall
+	cd e2e-pnpm && pnpm i --frozen-lockfile
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+	# Test rebuild
+	cd e2e-pnpm && pnpm rebuild && pnpm rebuild
+	cd e2e-pnpm && echo "1+2" | node_modules/.bin/ezburn | grep "1 + 2;" && node -p "require('ezburn').transformSync('1+2').code" | grep "1 + 2;"
+
 	# Clean up
 	rm -fr e2e-pnpm
 
 test-e2e-yarn:
 	# Test normal install
-	rm -fr e2e-yarn && mkdir e2e-yarn && cd e2e-yarn && echo '{"scripts":{"ezburn":"ezburn"}}' > package.json && touch yarn.lock && yarn set version classic && yarn link ezburn && yarn install --ignore-optional
+	rm -fr e2e-yarn && mkdir e2e-yarn && cd e2e-yarn && echo {} > package.json && touch yarn.lock && yarn set version classic && yarn add ezburn
 	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 	# Test CI reinstall
-	cd e2e-yarn && rm -rf node_modules && yarn install --immutable --ignore-optional
+	cd e2e-yarn && rm -fr node_modules && yarn install --immutable
 	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
+
 	# Test install without scripts
-	cd e2e-yarn && rm -rf node_modules && yarn install --ignore-scripts --ignore-optional
+	rm -fr e2e-yarn && mkdir e2e-yarn && cd e2e-yarn && echo {} > package.json && touch yarn.lock && echo 'enableScripts: false' > .yarnrc.yml && yarn set version classic && yarn add ezburn
 	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
+	# Test CI reinstall
+	cd e2e-yarn && rm -fr node_modules && yarn install --immutable
+	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
+
 	# Test install without optional dependencies
-	cd e2e-yarn && rm -rf node_modules && yarn install --ignore-optional
+	rm -fr e2e-yarn && mkdir e2e-yarn && cd e2e-yarn && echo {} > package.json && touch yarn.lock && yarn set version classic && yarn add ezburn
 	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
+	# Test CI reinstall
+	cd e2e-yarn && rm -fr node_modules && yarn install --immutable --ignore-optional
+	cd e2e-yarn && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
+
 	# Clean up
-	cd .. && rm -rf e2e-yarn
+	rm -fr e2e-yarn
 
 test-e2e-yarn-berry:
 	# Test normal install
-	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && yarn set version berry && yarn add --ignore-optional ezburn
+	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && yarn set version berry && yarn add ezburn
 	cd e2e-yb && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 	# Test CI reinstall
 	cd e2e-yb && yarn install --immutable
@@ -208,7 +240,7 @@ test-e2e-yarn-berry:
 	cd e2e-yb && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 
 	# Test install without scripts
-	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && echo 'enableScripts: false' > .yarnrc.yml && yarn set version berry && yarn add --ignore-optional ezburn
+	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && echo 'enableScripts: false' > .yarnrc.yml && yarn set version berry && yarn add ezburn
 	cd e2e-yb && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 	# Test CI reinstall
 	cd e2e-yb && yarn install --immutable
@@ -218,7 +250,7 @@ test-e2e-yarn-berry:
 	cd e2e-yb && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 
 	# Test install without optional dependencies
-	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && yarn set version berry && yarn add --ignore-optional ezburn
+	rm -fr e2e-yb && mkdir e2e-yb && cd e2e-yb && echo {} > package.json && touch yarn.lock && yarn set version berry && yarn add --no-optional ezburn
 	cd e2e-yb && echo "1+2" | yarn ezburn && yarn node -p "require('ezburn').transformSync('1+2').code"
 	# Test CI reinstall
 	cd e2e-yb && yarn install --immutable
@@ -231,8 +263,8 @@ test-e2e-yarn-berry:
 	rm -fr e2e-yb
 
 test-e2e-deno:
-	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBURN_VERSION)/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
-	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBURN_VERSION)/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBUILD_VERSION)/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBUILD_VERSION)/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
 
 test-yarnpnp: platform-wasm
 	node scripts/test-yarnpnp.js
@@ -257,6 +289,7 @@ platform-all:
 		platform-android-arm \
 		platform-android-arm64 \
 		platform-android-x64 \
+		platform-openharmony-arm64 \
 		platform-darwin-arm64 \
 		platform-darwin-x64 \
 		platform-deno \
@@ -311,6 +344,9 @@ platform-android-x64: platform-wasm
 
 platform-android-arm: platform-wasm
 	node scripts/ezburn.js npm/@ezburn/android-arm/package.json --version
+
+platform-openharmony-arm64: platform-wasm
+	node scripts/ezburn.js npm/@ezburn/openharmony-arm64/package.json --version
 
 platform-aix-ppc64:
 	@$(MAKE) --no-print-directory GOOS=aix GOARCH=ppc64 NPMDIR=npm/@ezburn/aix-ppc64 platform-unixlike
@@ -399,8 +435,8 @@ publish-all: check-go-version
 
 	# Commit now before publishing so git is clean for this: https://github.com/golang/go/issues/37475
 	# Note: If this fails, then the version number was likely not incremented before running this command
-	git commit -am "publish $(EZBURN_VERSION) to npm"
-	git tag "v$(EZBURN_VERSION)"
+	git commit -am "publish $(EZBUILD_VERSION) to npm"
+	git tag "v$(EZBUILD_VERSION)"
 	@test -z "`git status --porcelain`" || (echo "Aborting because git is somehow unclean after a commit" && false)
 
 	# Make sure the npm directory is pristine (including .gitignored files) since it will be published
@@ -431,7 +467,8 @@ publish-all: check-go-version
 	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
 		publish-android-x64 \
 		publish-android-arm \
-		publish-android-arm64
+		publish-android-arm64 \
+		publish-openharmony-arm64
 
 	@echo Enter one-time password:
 	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
@@ -461,7 +498,7 @@ publish-all: check-go-version
 		publish-wasm \
 		publish-dl
 
-	git push origin main "v$(EZBURN_VERSION)"
+	git push origin main "v$(EZBUILD_VERSION)"
 
 publish-win32-x64: platform-win32-x64
 	test -n "$(OTP)" && cd npm/@ezburn/win32-x64 && npm publish --otp="$(OTP)"
@@ -486,6 +523,9 @@ publish-android-arm: platform-android-arm
 
 publish-android-arm64: platform-android-arm64
 	test -n "$(OTP)" && cd npm/@ezburn/android-arm64 && npm publish --otp="$(OTP)"
+
+publish-openharmony-arm64: platform-openharmony-arm64
+	test -n "$(OTP)" && cd npm/@ezburn/openharmony-arm64 && npm publish --otp="$(OTP)"
 
 publish-darwin-x64: platform-darwin-x64
 	test -n "$(OTP)" && cd npm/@ezburn/darwin-x64 && npm publish --otp="$(OTP)"
@@ -542,7 +582,7 @@ publish-sunos-x64: platform-sunos-x64
 	test -n "$(OTP)" && cd npm/@ezburn/sunos-x64 && npm publish --otp="$(OTP)"
 
 publish-wasm: platform-wasm
-	test -n "$(OTP)" && cd npm/ezburn-wasm && npm publish --otp="$(OTP) --access=public"
+	test -n "$(OTP)" && cd npm/ezburn-wasm && npm publish --otp="$(OTP)"
 
 publish-neutral: platform-neutral
 	test -n "$(OTP)" && cd npm/ezburn && npm publish --otp="$(OTP)"
@@ -552,17 +592,17 @@ publish-deno:
 	cd deno && git fetch && git checkout main && git reset --hard origin/main
 	@$(MAKE) --no-print-directory platform-deno
 	cd deno && git add mod.js mod.d.ts wasm.js wasm.d.ts ezburn.wasm
-	cd deno && git commit -m "publish $(EZBURN_VERSION) to deno"
-	cd deno && git tag "v$(EZBURN_VERSION)"
-	cd deno && git push origin main "v$(EZBURN_VERSION)"
+	cd deno && git commit -m "publish $(EZBUILD_VERSION) to deno"
+	cd deno && git tag "v$(EZBUILD_VERSION)"
+	cd deno && git push origin main "v$(EZBUILD_VERSION)"
 
 publish-dl:
 	test -d www/.git || (rm -fr www && git clone git@github.com:ezburn/ezburn.github.io.git www)
 	cd www && git fetch && git checkout gh-pages && git reset --hard origin/gh-pages
-	cd www && cat ../dl.sh | sed 's/$$EZBURN_VERSION/$(EZBURN_VERSION)/' > dl/latest
-	cd www && cat ../dl.sh | sed 's/$$EZBURN_VERSION/$(EZBURN_VERSION)/' > "dl/v$(EZBURN_VERSION)"
-	cd www && git add dl/latest "dl/v$(EZBURN_VERSION)"
-	cd www && git commit -m "publish download script for $(EZBURN_VERSION)"
+	cd www && cat ../dl.sh | sed 's/$$EZBUILD_VERSION/$(EZBUILD_VERSION)/' > dl/latest
+	cd www && cat ../dl.sh | sed 's/$$EZBUILD_VERSION/$(EZBUILD_VERSION)/' > "dl/v$(EZBUILD_VERSION)"
+	cd www && git add dl/latest "dl/v$(EZBUILD_VERSION)"
+	cd www && git commit -m "publish download script for $(EZBUILD_VERSION)"
 	cd www && git push origin gh-pages
 
 validate-build:
@@ -572,7 +612,7 @@ validate-build:
 	@echo && echo "🔷 Checking $(SCOPE)$(PACKAGE)"
 	@rm -fr validate && mkdir validate
 	@$(MAKE) --no-print-directory "$(TARGET)"
-	@curl -s "https://registry.npmjs.org/$(SCOPE)$(PACKAGE)/-/$(PACKAGE)-$(EZBURN_VERSION).tgz" > validate/ezburn.tgz
+	@curl -s "https://registry.npmjs.org/$(SCOPE)$(PACKAGE)/-/$(PACKAGE)-$(EZBUILD_VERSION).tgz" > validate/ezburn.tgz
 	@cd validate && tar xf ezburn.tgz
 	@ls -l "npm/$(SCOPE)$(PACKAGE)/$(SUBPATH)" "validate/package/$(SUBPATH)" && \
 		shasum "npm/$(SCOPE)$(PACKAGE)/$(SUBPATH)" "validate/package/$(SUBPATH)" && \
@@ -581,34 +621,35 @@ validate-build:
 
 # This checks that the published binaries are bitwise-identical to the locally-build binaries
 validate-builds:
-	git fetch --all --tags && git checkout "v$(EZBURN_VERSION)"
-	@$(MAKE) --no-print-directory TARGET=platform-aix-ppc64      SCOPE=@ezburn/ PACKAGE=aix-ppc64       SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-android-arm    SCOPE=@ezburn/ PACKAGE=android-arm     SUBPATH=ezburn.wasm validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-android-arm64  SCOPE=@ezburn/ PACKAGE=android-arm64   SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-android-x64    SCOPE=@ezburn/ PACKAGE=android-x64     SUBPATH=ezburn.wasm validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-darwin-arm64   SCOPE=@ezburn/ PACKAGE=darwin-arm64    SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-darwin-x64     SCOPE=@ezburn/ PACKAGE=darwin-x64      SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-freebsd-arm64  SCOPE=@ezburn/ PACKAGE=freebsd-arm64   SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-freebsd-x64    SCOPE=@ezburn/ PACKAGE=freebsd-x64     SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-arm      SCOPE=@ezburn/ PACKAGE=linux-arm       SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-arm64    SCOPE=@ezburn/ PACKAGE=linux-arm64     SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-ia32     SCOPE=@ezburn/ PACKAGE=linux-ia32      SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-loong64  SCOPE=@ezburn/ PACKAGE=linux-loong64   SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-mips64el SCOPE=@ezburn/ PACKAGE=linux-mips64el  SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-ppc64    SCOPE=@ezburn/ PACKAGE=linux-ppc64     SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-riscv64  SCOPE=@ezburn/ PACKAGE=linux-riscv64   SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-s390x    SCOPE=@ezburn/ PACKAGE=linux-s390x     SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-linux-x64      SCOPE=@ezburn/ PACKAGE=linux-x64       SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-netbsd-arm64   SCOPE=@ezburn/ PACKAGE=netbsd-arm64    SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-netbsd-x64     SCOPE=@ezburn/ PACKAGE=netbsd-x64      SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-openbsd-arm64  SCOPE=@ezburn/ PACKAGE=openbsd-arm64   SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-openbsd-x64    SCOPE=@ezburn/ PACKAGE=openbsd-x64     SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-sunos-x64      SCOPE=@ezburn/ PACKAGE=sunos-x64       SUBPATH=bin/ezburn  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-wasi-preview1  SCOPE=@ezburn/ PACKAGE=wasi-preview1   SUBPATH=ezburn.wasm validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-wasm                           PACKAGE=ezburn-wasm    SUBPATH=ezburn.wasm validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-win32-arm64    SCOPE=@ezburn/ PACKAGE=win32-arm64     SUBPATH=ezburn.exe  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-win32-ia32     SCOPE=@ezburn/ PACKAGE=win32-ia32      SUBPATH=ezburn.exe  validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-win32-x64      SCOPE=@ezburn/ PACKAGE=win32-x64       SUBPATH=ezburn.exe  validate-build
+	git fetch --all --tags && git checkout "v$(EZBUILD_VERSION)"
+	@$(MAKE) --no-print-directory TARGET=platform-aix-ppc64         SCOPE=@ezburn/ PACKAGE=aix-ppc64           SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-android-arm       SCOPE=@ezburn/ PACKAGE=android-arm         SUBPATH=ezburn.wasm validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-android-arm64     SCOPE=@ezburn/ PACKAGE=android-arm64       SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-android-x64       SCOPE=@ezburn/ PACKAGE=android-x64         SUBPATH=ezburn.wasm validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-openharmony-arm64 SCOPE=@ezburn/ PACKAGE=openharmony-arm64   SUBPATH=ezburn.wasm validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-darwin-arm64      SCOPE=@ezburn/ PACKAGE=darwin-arm64        SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-darwin-x64        SCOPE=@ezburn/ PACKAGE=darwin-x64          SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-freebsd-arm64     SCOPE=@ezburn/ PACKAGE=freebsd-arm64       SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-freebsd-x64       SCOPE=@ezburn/ PACKAGE=freebsd-x64         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-arm         SCOPE=@ezburn/ PACKAGE=linux-arm           SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-arm64       SCOPE=@ezburn/ PACKAGE=linux-arm64         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-ia32        SCOPE=@ezburn/ PACKAGE=linux-ia32          SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-loong64     SCOPE=@ezburn/ PACKAGE=linux-loong64       SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-mips64el    SCOPE=@ezburn/ PACKAGE=linux-mips64el      SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-ppc64       SCOPE=@ezburn/ PACKAGE=linux-ppc64         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-riscv64     SCOPE=@ezburn/ PACKAGE=linux-riscv64       SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-s390x       SCOPE=@ezburn/ PACKAGE=linux-s390x         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-linux-x64         SCOPE=@ezburn/ PACKAGE=linux-x64           SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-netbsd-arm64      SCOPE=@ezburn/ PACKAGE=netbsd-arm64        SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-netbsd-x64        SCOPE=@ezburn/ PACKAGE=netbsd-x64          SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-openbsd-arm64     SCOPE=@ezburn/ PACKAGE=openbsd-arm64       SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-openbsd-x64       SCOPE=@ezburn/ PACKAGE=openbsd-x64         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-sunos-x64         SCOPE=@ezburn/ PACKAGE=sunos-x64           SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-wasi-preview1     SCOPE=@ezburn/ PACKAGE=wasi-preview1       SUBPATH=ezburn.wasm validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-wasm                              PACKAGE=ezburn-wasm        SUBPATH=ezburn.wasm validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-win32-arm64       SCOPE=@ezburn/ PACKAGE=win32-arm64         SUBPATH=ezburn.exe  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-win32-ia32        SCOPE=@ezburn/ PACKAGE=win32-ia32          SUBPATH=ezburn.exe  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-win32-x64         SCOPE=@ezburn/ PACKAGE=win32-x64           SUBPATH=ezburn.exe  validate-build
 
 clean:
 	go clean -cache
@@ -623,6 +664,7 @@ clean:
 	rm -rf npm/@ezburn/android-arm/bin npm/@ezburn/android-arm/ezburn.wasm npm/@ezburn/android-arm/wasm_exec*.js
 	rm -rf npm/@ezburn/android-arm64/bin
 	rm -rf npm/@ezburn/android-x64/bin npm/@ezburn/android-x64/ezburn.wasm npm/@ezburn/android-x64/wasm_exec*.js
+	rm -rf npm/@ezburn/openharmony-arm64/bin npm/@ezburn/openharmony-arm64/ezburn.wasm npm/@ezburn/openharmony-arm64/wasm_exec*.js
 	rm -rf npm/@ezburn/darwin-arm64/bin
 	rm -rf npm/@ezburn/darwin-x64/bin
 	rm -rf npm/@ezburn/freebsd-arm64/bin
@@ -1103,40 +1145,40 @@ bench/readmin: | github/react-admin
 
 bench-readmin: bench-readmin-ezburn
 
-READMIN_EZBURN_FLAGS += --alias:data-generator-retail=./bench/readmin/repo/examples/data-generator/src
-READMIN_EZBURN_FLAGS += --alias:ra-core=./bench/readmin/repo/packages/ra-core/src
-READMIN_EZBURN_FLAGS += --alias:ra-data-fakerest=./bench/readmin/repo/packages/ra-data-fakerest/src
-READMIN_EZBURN_FLAGS += --alias:ra-data-graphql-simple=./bench/readmin/repo/packages/ra-data-graphql-simple/src
-READMIN_EZBURN_FLAGS += --alias:ra-data-graphql=./bench/readmin/repo/packages/ra-data-graphql/src
-READMIN_EZBURN_FLAGS += --alias:ra-data-simple-rest=./bench/readmin/repo/packages/ra-data-simple-rest/src
-READMIN_EZBURN_FLAGS += --alias:ra-i18n-polyglot=./bench/readmin/repo/packages/ra-i18n-polyglot/src
-READMIN_EZBURN_FLAGS += --alias:ra-input-rich-text=./bench/readmin/repo/packages/ra-input-rich-text/src
-READMIN_EZBURN_FLAGS += --alias:ra-language-english=./bench/readmin/repo/packages/ra-language-english/src
-READMIN_EZBURN_FLAGS += --alias:ra-language-french=./bench/readmin/repo/packages/ra-language-french/src
-READMIN_EZBURN_FLAGS += --alias:ra-ui-materialui=./bench/readmin/repo/packages/ra-ui-materialui/src
-READMIN_EZBURN_FLAGS += --alias:react-admin=./bench/readmin/repo/packages/react-admin/src
-READMIN_EZBURN_FLAGS += --bundle
-READMIN_EZBURN_FLAGS += --define:process.env.REACT_APP_DATA_PROVIDER=null
-READMIN_EZBURN_FLAGS += --format=esm
-READMIN_EZBURN_FLAGS += --loader:.png=file
-READMIN_EZBURN_FLAGS += --loader:.svg=file
-READMIN_EZBURN_FLAGS += --minify
-READMIN_EZBURN_FLAGS += --sourcemap
-READMIN_EZBURN_FLAGS += --splitting
-READMIN_EZBURN_FLAGS += --target=esnext
-READMIN_EZBURN_FLAGS += --timing
-READMIN_EZBURN_FLAGS += bench/readmin/repo/examples/demo/src/index.tsx
+READMIN_EZBUILD_FLAGS += --alias:data-generator-retail=./bench/readmin/repo/examples/data-generator/src
+READMIN_EZBUILD_FLAGS += --alias:ra-core=./bench/readmin/repo/packages/ra-core/src
+READMIN_EZBUILD_FLAGS += --alias:ra-data-fakerest=./bench/readmin/repo/packages/ra-data-fakerest/src
+READMIN_EZBUILD_FLAGS += --alias:ra-data-graphql-simple=./bench/readmin/repo/packages/ra-data-graphql-simple/src
+READMIN_EZBUILD_FLAGS += --alias:ra-data-graphql=./bench/readmin/repo/packages/ra-data-graphql/src
+READMIN_EZBUILD_FLAGS += --alias:ra-data-simple-rest=./bench/readmin/repo/packages/ra-data-simple-rest/src
+READMIN_EZBUILD_FLAGS += --alias:ra-i18n-polyglot=./bench/readmin/repo/packages/ra-i18n-polyglot/src
+READMIN_EZBUILD_FLAGS += --alias:ra-input-rich-text=./bench/readmin/repo/packages/ra-input-rich-text/src
+READMIN_EZBUILD_FLAGS += --alias:ra-language-english=./bench/readmin/repo/packages/ra-language-english/src
+READMIN_EZBUILD_FLAGS += --alias:ra-language-french=./bench/readmin/repo/packages/ra-language-french/src
+READMIN_EZBUILD_FLAGS += --alias:ra-ui-materialui=./bench/readmin/repo/packages/ra-ui-materialui/src
+READMIN_EZBUILD_FLAGS += --alias:react-admin=./bench/readmin/repo/packages/react-admin/src
+READMIN_EZBUILD_FLAGS += --bundle
+READMIN_EZBUILD_FLAGS += --define:process.env.REACT_APP_DATA_PROVIDER=null
+READMIN_EZBUILD_FLAGS += --format=esm
+READMIN_EZBUILD_FLAGS += --loader:.png=file
+READMIN_EZBUILD_FLAGS += --loader:.svg=file
+READMIN_EZBUILD_FLAGS += --minify
+READMIN_EZBUILD_FLAGS += --sourcemap
+READMIN_EZBUILD_FLAGS += --splitting
+READMIN_EZBUILD_FLAGS += --target=esnext
+READMIN_EZBUILD_FLAGS += --timing
+READMIN_EZBUILD_FLAGS += bench/readmin/repo/examples/demo/src/index.tsx
 
 bench-readmin-ezburn: ezburn | bench/readmin
 	rm -fr bench/readmin/ezburn
-	time -p ./ezburn $(READMIN_EZBURN_FLAGS) --outdir=bench/readmin/ezburn
+	time -p ./ezburn $(READMIN_EZBUILD_FLAGS) --outdir=bench/readmin/ezburn
 	echo "$(READMIN_HTML)" > bench/readmin/ezburn/index.html
 	du -h bench/readmin/ezburn/index.js*
 	shasum bench/readmin/ezburn/index.js*
 
 bench-readmin-eswasm: platform-wasm | bench/readmin
 	rm -fr bench/readmin/eswasm
-	time -p ./npm/ezburn-wasm/bin/ezburn $(READMIN_EZBURN_FLAGS) --outdir=bench/readmin/eswasm
+	time -p ./npm/ezburn-wasm/bin/ezburn $(READMIN_EZBUILD_FLAGS) --outdir=bench/readmin/eswasm
 	echo "$(READMIN_HTML)" > bench/readmin/eswasm/index.html
 	du -h bench/readmin/eswasm/index.js*
 	shasum bench/readmin/eswasm/index.js*

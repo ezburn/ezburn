@@ -13,6 +13,9 @@
 /npm/@ezburn/android-x64/ezburn.wasm
 /npm/@ezburn/android-x64/wasm_exec_node.js
 /npm/@ezburn/android-x64/wasm_exec.js
+/npm/@ezburn/openharmony-arm64/ezburn.wasm
+/npm/@ezburn/openharmony-arm64/wasm_exec_node.js
+/npm/@ezburn/openharmony-arm64/wasm_exec.js
 /npm/@ezburn/wasi-preview1/ezburn.wasm
 /npm/ezburn-wasm/browser.js
 /npm/ezburn-wasm/ezburn.wasm
