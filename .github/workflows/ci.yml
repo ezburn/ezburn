@@ -111,10 +111,10 @@ jobs:
         with:
           node-version: 18
 
-      - name: Setup Deno 1.40.0
+      - name: Setup Deno 1.44.0
         uses: denoland/setup-deno@main
         with:
-          deno-version: v1.40.0
+          deno-version: v1.44.0
 
       - name: go test
         run: go test -race ./internal/...
