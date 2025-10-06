@@ -6627,7 +6627,7 @@ const x = {
     const input = `return \`${chars}\``;
     const { code, map } = await ezburn.transform(input, { sourcemap: true, sourcefile: 'afile.code' })
     const fn = new Function(code)
-    assert.strictEqual(fn(), chars.replace('\r', '\n'))
+    assert.strictEqual(fn(), chars.replace(/\r/g, '\n'))
     const json = JSON.parse(map)
     assert.strictEqual(json.version, 3)
     assert.strictEqual(json.sourcesContent.length, 1)
