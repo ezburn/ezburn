@@ -6,6 +6,7 @@
 /deno/
 /ezburn
 /github/
+/go/
 /lib/deno/lib.deno.d.ts
 /npm/@ezburn/android-arm/ezburn.wasm
 /npm/@ezburn/android-arm/wasm_exec_node.js
