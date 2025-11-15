@@ -1,4 +1,11 @@
-EZBUILD_VERSION = $(shell cat version.txt)
+EZBURN_VERSION = $(shell cat version.txt)
+GO_VERSION = $(shell cat go.version)
+
+# Stash the "node" executable because otherwise it breaks on GitHub Actions with Windows when "PATH" is changed
+NODE = $(shell which node)
+GO_DIR = $(shell pwd)/go/$(GO_VERSION)/go
+PATH_SEPARATOR = $(shell if uname | grep -qE "MINGW|WIN32|CYGWIN"; then echo ";"; else echo ":"; fi)
+GO_COMPILER = PATH="$(GO_DIR)/bin$(PATH_SEPARATOR)$(PATH)" GOROOT="$(GO_DIR)" CGO_ENABLED=0
 
 # Strip debug info
 GO_FLAGS += "-ldflags=-s -w"
@@ -20,7 +27,7 @@ test-all:
 	@$(MAKE) --no-print-directory -j6 test-common test-deno ts-type-tests test-wasm-node test-wasm-browser lib-typecheck test-yarnpnp
 
 check-go-version:
-	@go version | grep ' go1\.23\.8 ' || (echo 'Please install Go version 1.23.8' && false)
+	@go version | grep -F " go$(GO_VERSION) " || (echo 'Please install Go version $(GO_VERSION)' && false)
 
 # Note: Don't add "-race" here by default. The Go race detector is currently
 # only supported on the following configurations:
@@ -36,11 +43,11 @@ check-go-version:
 #
 # Also, it isn't necessarily supported on older OS versions even if the OS/CPU
 # combination is supported, such as on macOS 10.9. If you want to test using
-# the race detector, you can manually add it using the EZBUILD_RACE environment
-# variable like this: "EZBUILD_RACE=-race make test". Or you can permanently
-# enable it by adding "export EZBUILD_RACE=-race" to your shell profile.
+# the race detector, you can manually add it using the EZBURN_RACE environment
+# variable like this: "EZBURN_RACE=-race make test". Or you can permanently
+# enable it by adding "export EZBURN_RACE=-race" to your shell profile.
 test-go:
-	go test $(EZBUILD_RACE) ./internal/... ./pkg/...
+	go test $(EZBURN_RACE) ./internal/... ./pkg/...
 
 vet-go:
 	go vet ./cmd/... ./internal/... ./pkg/...
@@ -48,9 +55,35 @@ vet-go:
 fmt-go:
 	test -z "$(shell go fmt ./cmd/... ./internal/... ./pkg/... )"
 
+go-compiler: go/$(GO_VERSION)
+
+# Build a custom version of the Go compiler that omits buildinfo from the
+# final executable (since there is no command-line option to disable this).
+# This is done in an attempt to avoid poorly-implemented "security" tools
+# from breaking ezburn for users solely on the basis of what version of
+# Go ezburn was compiled with.
+#
+# Most (all?) Go-related security tooling effectivelly runs the command
+# "go version ./ezburn" and then creates a false-positive report for
+# ezburn for every single CVE in Go's expansive standard library. There is
+# no consideration for whether or not the corresponding API is ever actually
+# used by ezburn. These reports are harmful to users as they prevent users
+# from using ezburn in enterprise environments where these tools are
+# mandatory.
+#
+# These reports are all false-positives because ezburn is not a security
+# boundary. It's just a tool to transform trusted text (your source code)
+# into other text, and a local development server that serves a read-only
+# view of your source code and is not intended for production use.
+go/$(GO_VERSION):
+	mkdir -p go/$(GO_VERSION) && cd go/$(GO_VERSION) && curl -LO https://go.dev/dl/go$(GO_VERSION).src.tar.gz && tar xzf go$(GO_VERSION).src.tar.gz
+	cd go/$(GO_VERSION)/go && grep -qF "ctxt.buildinfo()" src/cmd/link/internal/ld/main.go # Make sure this call is still there
+	cd go/$(GO_VERSION)/go/src/cmd/link/internal/ld && sed "s/ctxt.buildinfo/\\/\\/ctxt.buildinfo/" main.go > temp && mv temp main.go
+	cd go/$(GO_VERSION)/go/src && if uname | grep -qE "MINGW|WIN32|CYGWIN"; then ./make.bat; else ./make.bash; fi
+
 no-filepath:
 	@! grep --color --include '*.go' -r '"path/filepath"' cmd internal pkg || ( \
-		echo 'error: Use of "path/filepath" is disallowed. See http://golang.org/issue/43768.' && false)
+		echo 'error: Use of "path/filepath" is disallowed. See https://golang.org/issue/43768' && false)
 
 # This uses "env -i" to run in a clean environment with no environment
 # variables. It then adds some environment variables back as needed.
@@ -65,14 +98,14 @@ test-wasm-browser: platform-wasm | scripts/browser/node_modules
 	cd scripts/browser && node browser-tests.js
 
 test-deno: ezburn platform-deno
-	EZBUILD_BINARY_PATH="$(shell pwd)/ezburn" deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
+	EZBURN_BINARY_PATH="$(shell pwd)/ezburn" deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
 	@echo '✅ deno tests passed' # I couldn't find a Deno API for telling when tests have failed, so I'm doing this here instead
-	deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
-	deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
-	deno run -A './deno/mod.js' # See: https://github.com/khulnasoft/ezburn/pull/3917
+	EZBURN_BINARY_PATH="$(shell pwd)/ezburn" deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	EZBURN_BINARY_PATH="$(shell pwd)/ezburn" deno eval 'import { transform, stop } from "file://$(shell pwd)/deno/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	EZBURN_BINARY_PATH="$(shell pwd)/ezburn" deno run -A './deno/mod.js'
 
 test-deno-windows: ezburn platform-deno
-	EZBUILD_BINARY_PATH=./ezburn.exe deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
+	EZBURN_BINARY_PATH=./ezburn.exe deno test --allow-run --allow-env --allow-net --allow-read --allow-write --no-check scripts/deno-tests.js
 
 register-test: version-go | scripts/node_modules
 	node scripts/ezburn.js npm/ezburn/package.json --version
@@ -87,7 +120,7 @@ end-to-end-tests: version-go
 	node scripts/end-to-end-tests.js
 
 # Note: The TypeScript source code for these tests was copied from the repo
-# https://github.com/khulnasoft/decorator-tests, which is the official location of
+# https://github.com/ezburn/decorator-tests, which is the official location of
 # the source code for these tests. Any changes to these tests should be made
 # there first and then copied here afterward.
 decorator-tests: ezburn
@@ -263,8 +296,8 @@ test-e2e-yarn-berry:
 	rm -fr e2e-yb
 
 test-e2e-deno:
-	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBUILD_VERSION)/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
-	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBUILD_VERSION)/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBURN_VERSION)/mod.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
+	deno eval 'import { transform, stop } from "https://deno.land/x/ezburn@v$(EZBURN_VERSION)/wasm.js"; console.log((await transform("1+2")).code); stop()' | grep "1 + 2;"
 
 test-yarnpnp: platform-wasm
 	node scripts/test-yarnpnp.js
@@ -283,13 +316,12 @@ test-yarnpnp: platform-wasm
 version-go:
 	node scripts/ezburn.js --update-version-go
 
-platform-all:
+platform-all: go-compiler
 	@$(MAKE) --no-print-directory -j4 \
 		platform-aix-ppc64 \
 		platform-android-arm \
 		platform-android-arm64 \
 		platform-android-x64 \
-		platform-openharmony-arm64 \
 		platform-darwin-arm64 \
 		platform-darwin-x64 \
 		platform-deno \
@@ -309,6 +341,7 @@ platform-all:
 		platform-neutral \
 		platform-openbsd-arm64 \
 		platform-openbsd-x64 \
+		platform-openharmony-arm64 \
 		platform-sunos-x64 \
 		platform-wasi-preview1 \
 		platform-wasm \
@@ -316,28 +349,28 @@ platform-all:
 		platform-win32-ia32 \
 		platform-win32-x64
 
-platform-win32-x64: version-go
+platform-win32-x64: version-go go-compiler
 	node scripts/ezburn.js npm/@ezburn/win32-x64/package.json --version
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_FLAGS) -o npm/@ezburn/win32-x64/ezburn.exe ./cmd/ezburn
+	$(GO_COMPILER) GOOS=windows GOARCH=amd64 go build $(GO_FLAGS) -o npm/@ezburn/win32-x64/ezburn.exe ./cmd/ezburn
 
-platform-win32-ia32: version-go
+platform-win32-ia32: version-go go-compiler
 	node scripts/ezburn.js npm/@ezburn/win32-ia32/package.json --version
-	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build $(GO_FLAGS) -o npm/@ezburn/win32-ia32/ezburn.exe ./cmd/ezburn
+	$(GO_COMPILER) GOOS=windows GOARCH=386 go build $(GO_FLAGS) -o npm/@ezburn/win32-ia32/ezburn.exe ./cmd/ezburn
 
-platform-win32-arm64: version-go
+platform-win32-arm64: version-go go-compiler
 	node scripts/ezburn.js npm/@ezburn/win32-arm64/package.json --version
-	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build $(GO_FLAGS) -o npm/@ezburn/win32-arm64/ezburn.exe ./cmd/ezburn
+	$(GO_COMPILER) GOOS=windows GOARCH=arm64 go build $(GO_FLAGS) -o npm/@ezburn/win32-arm64/ezburn.exe ./cmd/ezburn
 
-platform-wasi-preview1: version-go
+platform-wasi-preview1: version-go go-compiler
 	node scripts/ezburn.js npm/@ezburn/wasi-preview1/package.json --version
-	CGO_ENABLED=0 GOOS=wasip1 GOARCH=wasm go build $(GO_FLAGS) -o npm/@ezburn/wasi-preview1/ezburn.wasm ./cmd/ezburn
+	$(GO_COMPILER) GOOS=wasip1 GOARCH=wasm go build $(GO_FLAGS) -o npm/@ezburn/wasi-preview1/ezburn.wasm ./cmd/ezburn
 
-platform-unixlike: version-go
+platform-unixlike: version-go go-compiler
 	@test -n "$(GOOS)" || (echo "The environment variable GOOS must be provided" && false)
 	@test -n "$(GOARCH)" || (echo "The environment variable GOARCH must be provided" && false)
 	@test -n "$(NPMDIR)" || (echo "The environment variable NPMDIR must be provided" && false)
 	node scripts/ezburn.js "$(NPMDIR)/package.json" --version
-	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build $(GO_FLAGS) -o "$(NPMDIR)/bin/ezburn" ./cmd/ezburn
+	$(GO_COMPILER) GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build $(GO_FLAGS) -o "$(NPMDIR)/bin/ezburn" ./cmd/ezburn
 
 platform-android-x64: platform-wasm
 	node scripts/ezburn.js npm/@ezburn/android-x64/package.json --version
@@ -408,202 +441,140 @@ platform-linux-s390x:
 platform-sunos-x64:
 	@$(MAKE) --no-print-directory GOOS=illumos GOARCH=amd64 NPMDIR=npm/@ezburn/sunos-x64 platform-unixlike
 
-platform-wasm: ezburn
+platform-wasm: ezburn go-compiler
 	node scripts/ezburn.js npm/ezburn-wasm/package.json --version
-	node scripts/ezburn.js ./ezburn --wasm
+	$(GO_COMPILER) "$(NODE)" scripts/ezburn.js ./ezburn --wasm
 
 platform-neutral: ezburn
 	node scripts/ezburn.js npm/ezburn/package.json --version
 	node scripts/ezburn.js ./ezburn --neutral
 
-platform-deno: platform-wasm
-	node scripts/ezburn.js ./ezburn --deno
+platform-deno: platform-wasm go-compiler
+	$(GO_COMPILER) "$(NODE)" scripts/ezburn.js ./ezburn --deno
 
 publish-all: check-go-version
-	@grep "## `cat version.txt`" CHANGELOG.md || (echo "Missing '## `cat version.txt`' in CHANGELOG.md (required for automatic release notes)" && false)
-	@npm --version > /dev/null || (echo "The 'npm' command must be in your path to publish" && false)
-	@echo "Checking for uncommitted/untracked changes..." && test -z "`git status --porcelain | grep -vE 'M (CHANGELOG\.md|version\.txt)'`" || \
-		(echo "Refusing to publish with these uncommitted/untracked changes:" && \
-		git status --porcelain | grep -vE 'M (CHANGELOG\.md|version\.txt)' && false)
-	@echo "Checking for main branch..." && test main = "`git rev-parse --abbrev-ref HEAD`" || \
-		(echo "Refusing to publish from non-main branch `git rev-parse --abbrev-ref HEAD`" && false)
-	@echo "Checking for unpushed commits..." && git fetch
-	@test "" = "`git cherry`" || (echo "Refusing to publish with unpushed commits" && false)
-
-	# Prebuild now to prime go's compile cache and avoid timing issues later
-	@$(MAKE) --no-print-directory platform-all
-
-	# Commit now before publishing so git is clean for this: https://github.com/golang/go/issues/37475
-	# Note: If this fails, then the version number was likely not incremented before running this command
-	git commit -am "publish $(EZBUILD_VERSION) to npm"
-	git tag "v$(EZBUILD_VERSION)"
-	@test -z "`git status --porcelain`" || (echo "Aborting because git is somehow unclean after a commit" && false)
-
 	# Make sure the npm directory is pristine (including .gitignored files) since it will be published
 	rm -fr npm && git checkout npm
 
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-win32-x64 \
-		publish-win32-ia32 \
-		publish-win32-arm64 \
-		publish-wasi-preview1
+	# Publish all platform-dependent packages first
+	@$(MAKE) --no-print-directory publish-aix-ppc64
+	@$(MAKE) --no-print-directory publish-android-arm
+	@$(MAKE) --no-print-directory publish-android-arm64
+	@$(MAKE) --no-print-directory publish-android-x64
+	@$(MAKE) --no-print-directory publish-darwin-arm64
+	@$(MAKE) --no-print-directory publish-darwin-x64
+	@$(MAKE) --no-print-directory publish-freebsd-arm64
+	@$(MAKE) --no-print-directory publish-freebsd-x64
+	@$(MAKE) --no-print-directory publish-linux-arm
+	@$(MAKE) --no-print-directory publish-linux-arm64
+	@$(MAKE) --no-print-directory publish-linux-ia32
+	@$(MAKE) --no-print-directory publish-linux-loong64
+	@$(MAKE) --no-print-directory publish-linux-mips64el
+	@$(MAKE) --no-print-directory publish-linux-ppc64
+	@$(MAKE) --no-print-directory publish-linux-riscv64
+	@$(MAKE) --no-print-directory publish-linux-s390x
+	@$(MAKE) --no-print-directory publish-linux-x64
+	@$(MAKE) --no-print-directory publish-netbsd-arm64
+	@$(MAKE) --no-print-directory publish-netbsd-x64
+	@$(MAKE) --no-print-directory publish-openbsd-arm64
+	@$(MAKE) --no-print-directory publish-openbsd-x64
+	@$(MAKE) --no-print-directory publish-openharmony-arm64
+	@$(MAKE) --no-print-directory publish-sunos-x64
+	@$(MAKE) --no-print-directory publish-wasi-preview1
+	@$(MAKE) --no-print-directory publish-win32-arm64
+	@$(MAKE) --no-print-directory publish-win32-ia32
+	@$(MAKE) --no-print-directory publish-win32-x64
 
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-freebsd-arm64 \
-		publish-freebsd-x64 \
-		publish-openbsd-arm64 \
-		publish-openbsd-x64
-
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-darwin-arm64 \
-		publish-darwin-x64 \
-		publish-netbsd-arm64 \
-		publish-netbsd-x64
-
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-android-x64 \
-		publish-android-arm \
-		publish-android-arm64 \
-		publish-openharmony-arm64
-
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-linux-x64 \
-		publish-linux-ia32 \
-		publish-linux-arm
-
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-linux-arm64 \
-		publish-linux-riscv64 \
-		publish-linux-loong64 \
-		publish-linux-mips64el
-
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-aix-ppc64 \
-		publish-linux-ppc64 \
-		publish-linux-s390x \
-		publish-sunos-x64
-
-	# Do these last to avoid race conditions
-	@echo Enter one-time password:
-	@read OTP && OTP="$$OTP" $(MAKE) --no-print-directory -j4 \
-		publish-neutral \
-		publish-deno \
-		publish-wasm \
-		publish-dl
-
-	git push origin main "v$(EZBUILD_VERSION)"
+	# Publish platform-independent packages last to avoid race conditions
+	@$(MAKE) --no-print-directory publish-neutral
+	@$(MAKE) --no-print-directory publish-wasm
 
 publish-win32-x64: platform-win32-x64
-	test -n "$(OTP)" && cd npm/@ezburn/win32-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/win32-x64 && npm publish
 
 publish-win32-ia32: platform-win32-ia32
-	test -n "$(OTP)" && cd npm/@ezburn/win32-ia32 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/win32-ia32 && npm publish
 
 publish-win32-arm64: platform-win32-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/win32-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/win32-arm64 && npm publish
 
 publish-wasi-preview1: platform-wasi-preview1
-	test -n "$(OTP)" && cd npm/@ezburn/wasi-preview1 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/wasi-preview1 && npm publish
 
 publish-aix-ppc64: platform-aix-ppc64
-	test -n "$(OTP)" && cd npm/@ezburn/aix-ppc64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/aix-ppc64 && npm publish
 
 publish-android-x64: platform-android-x64
-	test -n "$(OTP)" && cd npm/@ezburn/android-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/android-x64 && npm publish
 
 publish-android-arm: platform-android-arm
-	test -n "$(OTP)" && cd npm/@ezburn/android-arm && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/android-arm && npm publish
 
 publish-android-arm64: platform-android-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/android-arm64 && npm publish --otp="$(OTP)"
-
-publish-openharmony-arm64: platform-openharmony-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/openharmony-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/android-arm64 && npm publish
 
 publish-darwin-x64: platform-darwin-x64
-	test -n "$(OTP)" && cd npm/@ezburn/darwin-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/darwin-x64 && npm publish
 
 publish-darwin-arm64: platform-darwin-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/darwin-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/darwin-arm64 && npm publish
 
 publish-freebsd-x64: platform-freebsd-x64
-	test -n "$(OTP)" && cd npm/@ezburn/freebsd-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/freebsd-x64 && npm publish
 
 publish-freebsd-arm64: platform-freebsd-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/freebsd-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/freebsd-arm64 && npm publish
 
 publish-netbsd-arm64: platform-netbsd-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/netbsd-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/netbsd-arm64 && npm publish
 
 publish-netbsd-x64: platform-netbsd-x64
-	test -n "$(OTP)" && cd npm/@ezburn/netbsd-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/netbsd-x64 && npm publish
 
 publish-openbsd-arm64: platform-openbsd-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/openbsd-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/openbsd-arm64 && npm publish
 
 publish-openbsd-x64: platform-openbsd-x64
-	test -n "$(OTP)" && cd npm/@ezburn/openbsd-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/openbsd-x64 && npm publish
+
+publish-openharmony-arm64: platform-openharmony-arm64
+	cd npm/@ezburn/openharmony-arm64 && npm publish
 
 publish-linux-x64: platform-linux-x64
-	test -n "$(OTP)" && cd npm/@ezburn/linux-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-x64 && npm publish
 
 publish-linux-ia32: platform-linux-ia32
-	test -n "$(OTP)" && cd npm/@ezburn/linux-ia32 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-ia32 && npm publish
 
 publish-linux-arm: platform-linux-arm
-	test -n "$(OTP)" && cd npm/@ezburn/linux-arm && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-arm && npm publish
 
 publish-linux-arm64: platform-linux-arm64
-	test -n "$(OTP)" && cd npm/@ezburn/linux-arm64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-arm64 && npm publish
 
 publish-linux-loong64: platform-linux-loong64
-	test -n "$(OTP)" && cd npm/@ezburn/linux-loong64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-loong64 && npm publish
 
 publish-linux-mips64el: platform-linux-mips64el
-	test -n "$(OTP)" && cd npm/@ezburn/linux-mips64el && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-mips64el && npm publish
 
 publish-linux-ppc64: platform-linux-ppc64
-	test -n "$(OTP)" && cd npm/@ezburn/linux-ppc64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-ppc64 && npm publish
 
 publish-linux-riscv64: platform-linux-riscv64
-	test -n "$(OTP)" && cd npm/@ezburn/linux-riscv64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-riscv64 && npm publish
 
 publish-linux-s390x: platform-linux-s390x
-	test -n "$(OTP)" && cd npm/@ezburn/linux-s390x && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/linux-s390x && npm publish
 
 publish-sunos-x64: platform-sunos-x64
-	test -n "$(OTP)" && cd npm/@ezburn/sunos-x64 && npm publish --otp="$(OTP)"
+	cd npm/@ezburn/sunos-x64 && npm publish
 
 publish-wasm: platform-wasm
-	test -n "$(OTP)" && cd npm/ezburn-wasm && npm publish --otp="$(OTP)"
+	cd npm/ezburn-wasm && npm publish
 
 publish-neutral: platform-neutral
-	test -n "$(OTP)" && cd npm/ezburn && npm publish --otp="$(OTP)"
-
-publish-deno:
-	test -d deno/.git || (rm -fr deno && git clone git@github.com:ezburn/deno-ezburn.git deno)
-	cd deno && git fetch && git checkout main && git reset --hard origin/main
-	@$(MAKE) --no-print-directory platform-deno
-	cd deno && git add mod.js mod.d.ts wasm.js wasm.d.ts ezburn.wasm
-	cd deno && git commit -m "publish $(EZBUILD_VERSION) to deno"
-	cd deno && git tag "v$(EZBUILD_VERSION)"
-	cd deno && git push origin main "v$(EZBUILD_VERSION)"
-
-publish-dl:
-	test -d www/.git || (rm -fr www && git clone git@github.com:ezburn/ezburn.github.io.git www)
-	cd www && git fetch && git checkout gh-pages && git reset --hard origin/gh-pages
-	cd www && cat ../dl.sh | sed 's/$$EZBUILD_VERSION/$(EZBUILD_VERSION)/' > dl/latest
-	cd www && cat ../dl.sh | sed 's/$$EZBUILD_VERSION/$(EZBUILD_VERSION)/' > "dl/v$(EZBUILD_VERSION)"
-	cd www && git add dl/latest "dl/v$(EZBUILD_VERSION)"
-	cd www && git commit -m "publish download script for $(EZBUILD_VERSION)"
-	cd www && git push origin gh-pages
+	cd npm/ezburn && npm publish
 
 validate-build:
 	@test -n "$(TARGET)" || (echo "The environment variable TARGET must be provided" && false)
@@ -612,7 +583,7 @@ validate-build:
 	@echo && echo "🔷 Checking $(SCOPE)$(PACKAGE)"
 	@rm -fr validate && mkdir validate
 	@$(MAKE) --no-print-directory "$(TARGET)"
-	@curl -s "https://registry.npmjs.org/$(SCOPE)$(PACKAGE)/-/$(PACKAGE)-$(EZBUILD_VERSION).tgz" > validate/ezburn.tgz
+	@curl -s "https://registry.npmjs.org/$(SCOPE)$(PACKAGE)/-/$(PACKAGE)-$(EZBURN_VERSION).tgz" > validate/ezburn.tgz
 	@cd validate && tar xf ezburn.tgz
 	@ls -l "npm/$(SCOPE)$(PACKAGE)/$(SUBPATH)" "validate/package/$(SUBPATH)" && \
 		shasum "npm/$(SCOPE)$(PACKAGE)/$(SUBPATH)" "validate/package/$(SUBPATH)" && \
@@ -621,12 +592,11 @@ validate-build:
 
 # This checks that the published binaries are bitwise-identical to the locally-build binaries
 validate-builds:
-	git fetch --all --tags && git checkout "v$(EZBUILD_VERSION)"
+	git fetch --all --tags && git checkout "v$(EZBURN_VERSION)"
 	@$(MAKE) --no-print-directory TARGET=platform-aix-ppc64         SCOPE=@ezburn/ PACKAGE=aix-ppc64           SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-android-arm       SCOPE=@ezburn/ PACKAGE=android-arm         SUBPATH=ezburn.wasm validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-android-arm64     SCOPE=@ezburn/ PACKAGE=android-arm64       SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-android-x64       SCOPE=@ezburn/ PACKAGE=android-x64         SUBPATH=ezburn.wasm validate-build
-	@$(MAKE) --no-print-directory TARGET=platform-openharmony-arm64 SCOPE=@ezburn/ PACKAGE=openharmony-arm64   SUBPATH=ezburn.wasm validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-darwin-arm64      SCOPE=@ezburn/ PACKAGE=darwin-arm64        SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-darwin-x64        SCOPE=@ezburn/ PACKAGE=darwin-x64          SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-freebsd-arm64     SCOPE=@ezburn/ PACKAGE=freebsd-arm64       SUBPATH=bin/ezburn  validate-build
@@ -644,6 +614,7 @@ validate-builds:
 	@$(MAKE) --no-print-directory TARGET=platform-netbsd-x64        SCOPE=@ezburn/ PACKAGE=netbsd-x64          SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-openbsd-arm64     SCOPE=@ezburn/ PACKAGE=openbsd-arm64       SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-openbsd-x64       SCOPE=@ezburn/ PACKAGE=openbsd-x64         SUBPATH=bin/ezburn  validate-build
+	@$(MAKE) --no-print-directory TARGET=platform-openharmony-arm64 SCOPE=@ezburn/ PACKAGE=openharmony-arm64   SUBPATH=ezburn.wasm validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-sunos-x64         SCOPE=@ezburn/ PACKAGE=sunos-x64           SUBPATH=bin/ezburn  validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-wasi-preview1     SCOPE=@ezburn/ PACKAGE=wasi-preview1       SUBPATH=ezburn.wasm validate-build
 	@$(MAKE) --no-print-directory TARGET=platform-wasm                              PACKAGE=ezburn-wasm        SUBPATH=ezburn.wasm validate-build
@@ -664,7 +635,6 @@ clean:
 	rm -rf npm/@ezburn/android-arm/bin npm/@ezburn/android-arm/ezburn.wasm npm/@ezburn/android-arm/wasm_exec*.js
 	rm -rf npm/@ezburn/android-arm64/bin
 	rm -rf npm/@ezburn/android-x64/bin npm/@ezburn/android-x64/ezburn.wasm npm/@ezburn/android-x64/wasm_exec*.js
-	rm -rf npm/@ezburn/openharmony-arm64/bin npm/@ezburn/openharmony-arm64/ezburn.wasm npm/@ezburn/openharmony-arm64/wasm_exec*.js
 	rm -rf npm/@ezburn/darwin-arm64/bin
 	rm -rf npm/@ezburn/darwin-x64/bin
 	rm -rf npm/@ezburn/freebsd-arm64/bin
@@ -682,6 +652,7 @@ clean:
 	rm -rf npm/@ezburn/netbsd-x64/bin
 	rm -rf npm/@ezburn/openbsd-arm64/bin
 	rm -rf npm/@ezburn/openbsd-x64/bin
+	rm -rf npm/@ezburn/openharmony-arm64/bin npm/@ezburn/openharmony-arm64/ezburn.wasm npm/@ezburn/openharmony-arm64/wasm_exec*.js
 	rm -rf npm/@ezburn/sunos-x64/bin
 	rm -rf npm/ezburn-wasm/esm
 	rm -rf npm/ezburn-wasm/lib
@@ -1145,40 +1116,40 @@ bench/readmin: | github/react-admin
 
 bench-readmin: bench-readmin-ezburn
 
-READMIN_EZBUILD_FLAGS += --alias:data-generator-retail=./bench/readmin/repo/examples/data-generator/src
-READMIN_EZBUILD_FLAGS += --alias:ra-core=./bench/readmin/repo/packages/ra-core/src
-READMIN_EZBUILD_FLAGS += --alias:ra-data-fakerest=./bench/readmin/repo/packages/ra-data-fakerest/src
-READMIN_EZBUILD_FLAGS += --alias:ra-data-graphql-simple=./bench/readmin/repo/packages/ra-data-graphql-simple/src
-READMIN_EZBUILD_FLAGS += --alias:ra-data-graphql=./bench/readmin/repo/packages/ra-data-graphql/src
-READMIN_EZBUILD_FLAGS += --alias:ra-data-simple-rest=./bench/readmin/repo/packages/ra-data-simple-rest/src
-READMIN_EZBUILD_FLAGS += --alias:ra-i18n-polyglot=./bench/readmin/repo/packages/ra-i18n-polyglot/src
-READMIN_EZBUILD_FLAGS += --alias:ra-input-rich-text=./bench/readmin/repo/packages/ra-input-rich-text/src
-READMIN_EZBUILD_FLAGS += --alias:ra-language-english=./bench/readmin/repo/packages/ra-language-english/src
-READMIN_EZBUILD_FLAGS += --alias:ra-language-french=./bench/readmin/repo/packages/ra-language-french/src
-READMIN_EZBUILD_FLAGS += --alias:ra-ui-materialui=./bench/readmin/repo/packages/ra-ui-materialui/src
-READMIN_EZBUILD_FLAGS += --alias:react-admin=./bench/readmin/repo/packages/react-admin/src
-READMIN_EZBUILD_FLAGS += --bundle
-READMIN_EZBUILD_FLAGS += --define:process.env.REACT_APP_DATA_PROVIDER=null
-READMIN_EZBUILD_FLAGS += --format=esm
-READMIN_EZBUILD_FLAGS += --loader:.png=file
-READMIN_EZBUILD_FLAGS += --loader:.svg=file
-READMIN_EZBUILD_FLAGS += --minify
-READMIN_EZBUILD_FLAGS += --sourcemap
-READMIN_EZBUILD_FLAGS += --splitting
-READMIN_EZBUILD_FLAGS += --target=esnext
-READMIN_EZBUILD_FLAGS += --timing
-READMIN_EZBUILD_FLAGS += bench/readmin/repo/examples/demo/src/index.tsx
+READMIN_EZBURN_FLAGS += --alias:data-generator-retail=./bench/readmin/repo/examples/data-generator/src
+READMIN_EZBURN_FLAGS += --alias:ra-core=./bench/readmin/repo/packages/ra-core/src
+READMIN_EZBURN_FLAGS += --alias:ra-data-fakerest=./bench/readmin/repo/packages/ra-data-fakerest/src
+READMIN_EZBURN_FLAGS += --alias:ra-data-graphql-simple=./bench/readmin/repo/packages/ra-data-graphql-simple/src
+READMIN_EZBURN_FLAGS += --alias:ra-data-graphql=./bench/readmin/repo/packages/ra-data-graphql/src
+READMIN_EZBURN_FLAGS += --alias:ra-data-simple-rest=./bench/readmin/repo/packages/ra-data-simple-rest/src
+READMIN_EZBURN_FLAGS += --alias:ra-i18n-polyglot=./bench/readmin/repo/packages/ra-i18n-polyglot/src
+READMIN_EZBURN_FLAGS += --alias:ra-input-rich-text=./bench/readmin/repo/packages/ra-input-rich-text/src
+READMIN_EZBURN_FLAGS += --alias:ra-language-english=./bench/readmin/repo/packages/ra-language-english/src
+READMIN_EZBURN_FLAGS += --alias:ra-language-french=./bench/readmin/repo/packages/ra-language-french/src
+READMIN_EZBURN_FLAGS += --alias:ra-ui-materialui=./bench/readmin/repo/packages/ra-ui-materialui/src
+READMIN_EZBURN_FLAGS += --alias:react-admin=./bench/readmin/repo/packages/react-admin/src
+READMIN_EZBURN_FLAGS += --bundle
+READMIN_EZBURN_FLAGS += --define:process.env.REACT_APP_DATA_PROVIDER=null
+READMIN_EZBURN_FLAGS += --format=esm
+READMIN_EZBURN_FLAGS += --loader:.png=file
+READMIN_EZBURN_FLAGS += --loader:.svg=file
+READMIN_EZBURN_FLAGS += --minify
+READMIN_EZBURN_FLAGS += --sourcemap
+READMIN_EZBURN_FLAGS += --splitting
+READMIN_EZBURN_FLAGS += --target=esnext
+READMIN_EZBURN_FLAGS += --timing
+READMIN_EZBURN_FLAGS += bench/readmin/repo/examples/demo/src/index.tsx
 
 bench-readmin-ezburn: ezburn | bench/readmin
 	rm -fr bench/readmin/ezburn
-	time -p ./ezburn $(READMIN_EZBUILD_FLAGS) --outdir=bench/readmin/ezburn
+	time -p ./ezburn $(READMIN_EZBURN_FLAGS) --outdir=bench/readmin/ezburn
 	echo "$(READMIN_HTML)" > bench/readmin/ezburn/index.html
 	du -h bench/readmin/ezburn/index.js*
 	shasum bench/readmin/ezburn/index.js*
 
 bench-readmin-eswasm: platform-wasm | bench/readmin
 	rm -fr bench/readmin/eswasm
-	time -p ./npm/ezburn-wasm/bin/ezburn $(READMIN_EZBUILD_FLAGS) --outdir=bench/readmin/eswasm
+	time -p ./npm/ezburn-wasm/bin/ezburn $(READMIN_EZBURN_FLAGS) --outdir=bench/readmin/eswasm
 	echo "$(READMIN_HTML)" > bench/readmin/eswasm/index.html
 	du -h bench/readmin/eswasm/index.js*
 	shasum bench/readmin/eswasm/index.js*
