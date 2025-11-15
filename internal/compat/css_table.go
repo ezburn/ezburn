@@ -18,6 +18,7 @@ const (
 	InlineStyle
 	InsetProperty
 	IsPseudoClass
+	MediaRange
 	Modern_RGB_HSL
 	Nesting
 	RebeccaPurple
@@ -33,6 +34,7 @@ var StringToCSSFeature = map[string]CSSFeature{
 	"inline-style":             InlineStyle,
 	"inset-property":           InsetProperty,
 	"is-pseudo-class":          IsPseudoClass,
+	"media-range":              MediaRange,
 	"modern-rgb-hsl":           Modern_RGB_HSL,
 	"nesting":                  Nesting,
 	"rebecca-purple":           RebeccaPurple,
@@ -110,6 +112,14 @@ var cssTable = map[CSSFeature]map[Engine][]versionRange{
 		IOS:     {{start: v{14, 0, 0}}},
 		Opera:   {{start: v{75, 0, 0}}},
 		Safari:  {{start: v{14, 0, 0}}},
+	},
+	MediaRange: {
+		Chrome:  {{start: v{104, 0, 0}}},
+		Edge:    {{start: v{104, 0, 0}}},
+		Firefox: {{start: v{63, 0, 0}}},
+		IOS:     {{start: v{16, 4, 0}}},
+		Opera:   {{start: v{91, 0, 0}}},
+		Safari:  {{start: v{16, 4, 0}}},
 	},
 	Modern_RGB_HSL: {
 		Chrome:  {{start: v{66, 0, 0}}},
@@ -205,7 +215,7 @@ var cssPrefixTable = map[css_ast.D][]prefixData{
 		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{130, 0, 0}},
 		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{130, 0, 0}},
 		{engine: IOS, prefix: WebkitPrefix},
-		{engine: Opera, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{116, 0, 0}},
 		{engine: Safari, prefix: WebkitPrefix},
 	},
 	css_ast.DClipPath: {
@@ -219,6 +229,14 @@ var cssPrefixTable = map[css_ast.D][]prefixData{
 		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{12, 0, 0}},
 		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{20, 0, 0}},
 		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{9, 1, 0}},
+	},
+	css_ast.DHeight: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Firefox, prefix: WebkitPrefix},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
 	},
 	css_ast.DHyphens: {
 		{engine: Edge, prefix: MsPrefix, withoutPrefix: v{79, 0, 0}},
@@ -240,6 +258,160 @@ var cssPrefixTable = map[css_ast.D][]prefixData{
 	},
 	css_ast.DMaskImage: {
 		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+		{engine: Opera, prefix: WebkitPrefix},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DMaskOrigin: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{106, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DMaskPosition: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{106, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DMaskRepeat: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{106, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DMaskSize: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{106, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DMaxHeight: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+	css_ast.DMaxWidth: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+	css_ast.DMinHeight: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+	css_ast.DMinWidth: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+	css_ast.DPosition: {
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{13, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{13, 0, 0}},
+	},
+	css_ast.DPrintColorAdjust: {
+		{engine: Chrome, prefix: WebkitPrefix},
+		{engine: Edge, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
+	},
+	css_ast.DTabSize: {
+		{engine: Firefox, prefix: MozPrefix, withoutPrefix: v{91, 0, 0}},
+		{engine: Opera, prefix: OPrefix, withoutPrefix: v{15, 0, 0}},
+	},
+	css_ast.DTextDecorationColor: {
+		{engine: Firefox, prefix: MozPrefix, withoutPrefix: v{36, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{12, 2, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{12, 1, 0}},
+	},
+	css_ast.DTextDecorationLine: {
+		{engine: Firefox, prefix: MozPrefix, withoutPrefix: v{36, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{12, 2, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{12, 1, 0}},
+	},
+	css_ast.DTextDecorationSkip: {
+		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{12, 2, 0}},
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{12, 1, 0}},
+	},
+	css_ast.DTextEmphasisColor: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{85, 0, 0}},
+	},
+	css_ast.DTextEmphasisPosition: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{85, 0, 0}},
+	},
+	css_ast.DTextEmphasisStyle: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{99, 0, 0}},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{85, 0, 0}},
+	},
+	css_ast.DTextOrientation: {
+		{engine: Safari, prefix: WebkitPrefix, withoutPrefix: v{14, 0, 0}},
+	},
+	css_ast.DTextSizeAdjust: {
+		{engine: Edge, prefix: MsPrefix, withoutPrefix: v{79, 0, 0}},
+		{engine: IOS, prefix: WebkitPrefix},
+	},
+	css_ast.DUserSelect: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{54, 0, 0}},
+		{engine: Edge, prefix: MsPrefix, withoutPrefix: v{79, 0, 0}},
+		{engine: Firefox, prefix: MozPrefix, withoutPrefix: v{69, 0, 0}},
+		{engine: IE, prefix: MsPrefix},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{41, 0, 0}},
+		{engine: Safari, prefix: KhtmlPrefix, withoutPrefix: v{3, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+	css_ast.DWidth: {
+		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{138, 0, 0}},
+		{engine: Firefox, prefix: WebkitPrefix},
+		{engine: IOS, prefix: WebkitPrefix},
+		{engine: Opera, prefix: WebkitPrefix, withoutPrefix: v{122, 0, 0}},
+		{engine: Safari, prefix: WebkitPrefix},
+	},
+}
+
+func CSSPrefixData(constraints map[Engine]Semver) (entries map[css_ast.D]CSSPrefix) {
+	for property, items := range cssPrefixTable {
+		prefixes := NoPrefix
+		for engine, version := range constraints {
+			if !engine.IsBrowser() {
+				// Specifying "--target=es2020" shouldn't affect CSS
+				continue
+			}
+			for _, item := range items {
+				if item.engine == engine && (item.withoutPrefix == v{} || compareVersions(item.withoutPrefix, version) > 0) {
+					prefixes |= item.prefix
+				}
+			}
+		}
+		if prefixes != NoPrefix {
+			if entries == nil {
+				entries = make(map[css_ast.D]CSSPrefix)
+			}
+			entries[property] = prefixes
+		}
+	}
+	return
+}		{engine: Chrome, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
 		{engine: Edge, prefix: WebkitPrefix, withoutPrefix: v{120, 0, 0}},
 		{engine: IOS, prefix: WebkitPrefix, withoutPrefix: v{15, 4, 0}},
 		{engine: Opera, prefix: WebkitPrefix},
